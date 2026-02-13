@@ -1,0 +1,127 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+# Allow frontend to talk to backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ------------------ DATABASE (IN-MEMORY) ------------------
+
+state = {
+    "projects": [],
+    "tasks": [],
+    "files": [],
+    "comments": []
+}
+
+def evaluate(rules):
+    passed = sum(1 for r in rules if r["pass"])
+    confidence = int((passed / len(rules)) * 100)
+    return confidence
+
+# ------------------ ROUTES ------------------
+
+@app.post("/api/projects")
+def create_project(data: dict):
+    rules = [
+        {"rule": "Project name provided", "pass": bool(data.get("name"))},
+        {"rule": "Description provided", "pass": bool(data.get("description"))}
+    ]
+
+    confidence = evaluate(rules)
+
+    if confidence == 100:
+        project = {
+            "id": len(state["projects"]) + 1,
+            "name": data["name"],
+            "description": data["description"]
+        }
+        state["projects"].append(project)
+        return {
+            "success": True,
+            "confidence": confidence,
+            "rules": rules,
+            "explanation": "Project created successfully",
+            "project": project
+        }
+
+    return {
+        "success": False,
+        "confidence": confidence,
+        "rules": rules,
+        "explanation": "Project creation failed due to missing data"
+    }
+
+
+@app.post("/api/tasks")
+def create_task(data: dict):
+    rules = [
+        {"rule": "Task title provided", "pass": bool(data.get("title"))},
+        {"rule": "Valid project ID", "pass": isinstance(data.get("project_id"), int)}
+    ]
+
+    confidence = evaluate(rules)
+
+    if confidence == 100:
+        task = {
+            "id": len(state["tasks"]) + 1,
+            "title": data["title"],
+            "project_id": data["project_id"],
+            "status": "todo"
+        }
+        state["tasks"].append(task)
+        return {
+            "success": True,
+            "confidence": confidence,
+            "rules": rules,
+            "explanation": "Task created successfully",
+            "task": task
+        }
+
+    return {
+        "success": False,
+        "confidence": confidence,
+        "rules": rules,
+        "explanation": "Task creation failed"
+    }
+
+
+@app.post("/api/activity")
+def add_activity(data: dict):
+    rules = [
+        {"rule": "Valid project ID", "pass": isinstance(data.get("project_id"), int)},
+        {"rule": "File or comment provided", "pass": bool(data.get("file") or data.get("comment"))}
+    ]
+
+    confidence = evaluate(rules)
+
+    if confidence == 100:
+        if data.get("file"):
+            state["files"].append(data["file"])
+        if data.get("comment"):
+            state["comments"].append(data["comment"])
+
+        return {
+            "success": True,
+            "confidence": confidence,
+            "rules": rules,
+            "explanation": "Activity added successfully"
+        }
+
+    return {
+        "success": False,
+        "confidence": confidence,
+        "rules": rules,
+        "explanation": "Activity failed"
+    }
+
+
+@app.get("/api/state")
+def get_state():
+    return state
